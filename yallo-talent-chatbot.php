@@ -3,7 +3,7 @@
  * Plugin Name: YALLO Talent Chatbot
  * Plugin URI: https://yallo.com
  * Description: An intelligent chatbot for YALLO talent acquisition and consultation services with a sleek dark theme interface.
- * Version: 0.5.02.2026
+ * Version: 1.0.1
  * Author: Anup
  * Author URI: https://yallo.com
  * License: GPL v2 or later
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('YALLO_CHATBOT_VERSION', '1.0.0');
+define('YALLO_CHATBOT_VERSION', '1.0.1');
 define('YALLO_CHATBOT_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('YALLO_CHATBOT_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('YALLO_CHATBOT_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -66,6 +66,10 @@ class YALLO_Talent_Chatbot {
         add_action('wp_ajax_yallo_submit_lead', array($this, 'handle_lead_submission'));
         add_action('wp_ajax_nopriv_yallo_submit_lead', array($this, 'handle_lead_submission'));
         
+        // Register newsletter AJAX endpoints
+        add_action('wp_ajax_yallo_newsletter_subscribe', array($this, 'handle_newsletter_subscription'));
+        add_action('wp_ajax_nopriv_yallo_newsletter_subscribe', array($this, 'handle_newsletter_subscription'));
+        
         // Register admin menu
         add_action('admin_menu', array($this, 'add_admin_menu'));
         
@@ -90,12 +94,21 @@ class YALLO_Talent_Chatbot {
             return;
         }
         
+        // Check page restrictions
+        if (!$this->should_display_on_current_page()) {
+            return;
+        }
+        
+        // Cache busting version - increments automatically
+        // Change YALLO_CHATBOT_VERSION in main file to force refresh for all users
+        $version = YALLO_CHATBOT_VERSION;
+        
         // Enqueue styles
         wp_enqueue_style(
             'yallo-chatbot-styles',
             YALLO_CHATBOT_PLUGIN_URL . 'assets/css/chatbot.css',
             array(),
-            YALLO_CHATBOT_VERSION
+            $version
         );
         
         // Enqueue scripts
@@ -103,17 +116,134 @@ class YALLO_Talent_Chatbot {
             'yallo-chatbot-script',
             YALLO_CHATBOT_PLUGIN_URL . 'assets/js/chatbot.js',
             array('jquery'),
-            YALLO_CHATBOT_VERSION,
+            $version,
             true
         );
         
-        // Localize script for AJAX
+        // Enqueue newsletter styles and scripts if enabled
+        if (get_option('yallo_newsletter_enabled', false)) {
+            wp_enqueue_style(
+                'yallo-newsletter-styles',
+                YALLO_CHATBOT_PLUGIN_URL . 'assets/css/newsletter.css',
+                array(),
+                $version
+            );
+            
+            wp_enqueue_script(
+                'yallo-newsletter-script',
+                YALLO_CHATBOT_PLUGIN_URL . 'assets/js/newsletter.js',
+                array('jquery'),
+                $version,
+                true
+            );
+            
+            wp_localize_script('yallo-newsletter-script', 'yalloNewsletter', array(
+                'ajaxUrl' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('yallo_chatbot_nonce'),
+                'delay' => get_option('yallo_newsletter_delay', 5000),
+                'showOnce' => get_option('yallo_newsletter_show_once', true),
+            ));
+        }
+        
+        // Localize script for AJAX with debug info
         wp_localize_script('yallo-chatbot-script', 'yalloChatbot', array(
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('yallo_chatbot_nonce'),
             'autoOpen' => get_option('yallo_chatbot_auto_open', true),
             'scrollTrigger' => get_option('yallo_chatbot_scroll_trigger', 50),
+            'displayMode' => get_option('yallo_chatbot_display_mode', 'all_pages'),
+            'currentUrl' => home_url($_SERVER['REQUEST_URI']),
+            'debug' => defined('WP_DEBUG') && WP_DEBUG,
         ));
+    }
+    
+    /**
+     * Check if chatbot should display on current page
+     */
+    private function should_display_on_current_page() {
+        $display_mode = get_option('yallo_chatbot_display_mode', 'all_pages');
+        
+        // Display on all pages
+        if ($display_mode === 'all_pages') {
+            return true;
+        }
+        
+        // Display on homepage only
+        if ($display_mode === 'homepage_only') {
+            return is_front_page() || is_home();
+        }
+        
+        // Display on specific pages only
+        if ($display_mode === 'specific_pages') {
+            $specific_pages = get_option('yallo_chatbot_specific_pages', '');
+            
+            if (empty($specific_pages)) {
+                return false;
+            }
+            
+            // Get current page information
+            global $post;
+            $current_url = home_url($_SERVER['REQUEST_URI']);
+            $current_path = parse_url($current_url, PHP_URL_PATH);
+            
+            // Clean and parse the specific pages
+            $pages_array = array_filter(array_map('trim', explode("\n", $specific_pages)));
+            
+            foreach ($pages_array as $page_rule) {
+                if (empty($page_rule)) {
+                    continue;
+                }
+                
+                // Check for page ID (format: id:123)
+                if (strpos($page_rule, 'id:') === 0) {
+                    $page_id = intval(str_replace('id:', '', $page_rule));
+                    if ($post && ($post->ID == $page_id || is_page($page_id) || is_single($page_id))) {
+                        return true;
+                    }
+                }
+                // Check for slug (format: slug:contact-us)
+                elseif (strpos($page_rule, 'slug:') === 0) {
+                    $slug = str_replace('slug:', '', $page_rule);
+                    if ($post && $post->post_name == $slug) {
+                        return true;
+                    }
+                    if (is_page($slug) || is_single($slug)) {
+                        return true;
+                    }
+                }
+                // Check for URL match (full or partial)
+                else {
+                    // Clean the rule for comparison
+                    $clean_rule = preg_replace('#^https?://(www\.)?#', '', trim($page_rule, '/'));
+                    $clean_rule = '/' . ltrim($clean_rule, '/');
+                    
+                    // Clean current path
+                    $clean_current = rtrim($current_path, '/');
+                    if (empty($clean_current)) {
+                        $clean_current = '/';
+                    }
+                    
+                    // Exact match
+                    if ($clean_current === $clean_rule) {
+                        return true;
+                    }
+                    
+                    // Contains match (for wildcards)
+                    if (strpos($clean_current, $clean_rule) !== false) {
+                        return true;
+                    }
+                    
+                    // Match without leading slash
+                    if (strpos($clean_current, '/' . trim($clean_rule, '/')) !== false) {
+                        return true;
+                    }
+                }
+            }
+            
+            return false;
+        }
+        
+        return true;
     }
     
     /**
@@ -122,10 +252,26 @@ class YALLO_Talent_Chatbot {
     public function render_chatbot() {
         // Check if chatbot is enabled
         if (!get_option('yallo_chatbot_enabled', true)) {
+            echo '<!-- YALLO Chatbot: Disabled in settings -->';
             return;
         }
         
+        // Check page restrictions
+        if (!$this->should_display_on_current_page()) {
+            $display_mode = get_option('yallo_chatbot_display_mode', 'all_pages');
+            $current_url = home_url($_SERVER['REQUEST_URI']);
+            echo "<!-- YALLO Chatbot: Not displayed on this page (Mode: {$display_mode}, URL: {$current_url}) -->";
+            return;
+        }
+        
+        echo '<!-- YALLO Chatbot: Active -->';
         include YALLO_CHATBOT_PLUGIN_DIR . 'templates/chatbot.php';
+        
+        // Render newsletter popup if enabled
+        if (get_option('yallo_newsletter_enabled', false)) {
+            echo '<!-- YALLO Newsletter: Active -->';
+            include YALLO_CHATBOT_PLUGIN_DIR . 'templates/newsletter-popup.php';
+        }
     }
     
     /**
@@ -226,6 +372,78 @@ class YALLO_Talent_Chatbot {
     }
     
     /**
+     * Handle newsletter subscription via AJAX
+     */
+    public function handle_newsletter_subscription() {
+        // Verify nonce
+        check_ajax_referer('yallo_chatbot_nonce', 'nonce');
+        
+        // Sanitize email and name
+        $email = sanitize_email($_POST['email'] ?? '');
+        $name = sanitize_text_field($_POST['name'] ?? '');
+        
+        // Validate email
+        if (!is_email($email)) {
+            wp_send_json_error(array('message' => 'Invalid email address'));
+            return;
+        }
+        
+        // Save to database
+        global $wpdb;
+        $table_name = $wpdb->prefix . 'yallo_newsletter_subscribers';
+        
+        // Check if already subscribed
+        $existing = $wpdb->get_var($wpdb->prepare(
+            "SELECT id FROM $table_name WHERE email = %s",
+            $email
+        ));
+        
+        if ($existing) {
+            wp_send_json_error(array('message' => 'This email is already subscribed'));
+            return;
+        }
+        
+        $inserted = $wpdb->insert(
+            $table_name,
+            array(
+                'email' => $email,
+                'name' => $name,
+                'subscribed_at' => current_time('mysql'),
+                'ip_address' => $this->get_client_ip(),
+                'page_url' => esc_url_raw($_POST['page_url'] ?? ''),
+            ),
+            array('%s', '%s', '%s', '%s', '%s')
+        );
+        
+        if ($inserted) {
+            // Send notification email
+            $this->send_newsletter_notification($email, $name);
+            
+            wp_send_json_success(array('message' => 'Successfully subscribed!'));
+        } else {
+            wp_send_json_error(array('message' => 'Failed to subscribe'));
+        }
+    }
+    
+    /**
+     * Send email notification for new newsletter subscriber
+     */
+    private function send_newsletter_notification($email, $name) {
+        $admin_email = get_option('yallo_chatbot_notification_email', get_option('admin_email'));
+        
+        $subject = '[YALLO Newsletter] New Subscriber: ' . $email;
+        
+        $message = "New newsletter subscriber:\n\n";
+        $message .= "Email: {$email}\n";
+        $message .= "Name: {$name}\n";
+        $message .= "Subscribed: " . current_time('mysql') . "\n";
+        
+        $headers = array('Content-Type: text/plain; charset=UTF-8');
+        
+        wp_mail($admin_email, $subject, $message, $headers);
+    }
+    
+    /**
      * Add admin menu
      */
     public function add_admin_menu() {
@@ -256,6 +474,15 @@ class YALLO_Talent_Chatbot {
             'yallo-chatbot-leads',
             array($this, 'render_leads_page')
         );
+        
+        add_submenu_page(
+            'yallo-chatbot',
+            'Newsletter Subscribers',
+            'Newsletter',
+            'manage_options',
+            'yallo-chatbot-newsletter',
+            array($this, 'render_newsletter_page')
+        );
     }
     
     /**
@@ -266,6 +493,17 @@ class YALLO_Talent_Chatbot {
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_auto_open');
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_scroll_trigger');
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_notification_email');
+        register_setting('yallo_chatbot_settings', 'yallo_chatbot_display_mode');
+        register_setting('yallo_chatbot_settings', 'yallo_chatbot_specific_pages');
+        register_setting('yallo_chatbot_settings', 'yallo_chatbot_bypass_cache');
+        
+        // Newsletter popup settings
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_enabled');
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_delay');
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_title');
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_description');
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_button_text');
+        register_setting('yallo_chatbot_settings', 'yallo_newsletter_show_once');
     }
     
     /**
@@ -280,6 +518,13 @@ class YALLO_Talent_Chatbot {
      */
     public function render_leads_page() {
         include YALLO_CHATBOT_PLUGIN_DIR . 'admin/leads.php';
+    }
+    
+    /**
+     * Render newsletter subscribers page
+     */
+    public function render_newsletter_page() {
+        include YALLO_CHATBOT_PLUGIN_DIR . 'admin/newsletter.php';
     }
     
     /**
@@ -331,6 +576,33 @@ function yallo_chatbot_activate() {
     add_option('yallo_chatbot_auto_open', true);
     add_option('yallo_chatbot_scroll_trigger', 50);
     add_option('yallo_chatbot_notification_email', get_option('admin_email'));
+    add_option('yallo_chatbot_display_mode', 'all_pages');
+    add_option('yallo_chatbot_specific_pages', '');
+    
+    // Create newsletter subscribers table
+    $newsletter_table = $wpdb->prefix . 'yallo_newsletter_subscribers';
+    
+    $newsletter_sql = "CREATE TABLE IF NOT EXISTS $newsletter_table (
+        id bigint(20) NOT NULL AUTO_INCREMENT,
+        email varchar(255) NOT NULL,
+        name varchar(255) DEFAULT '',
+        subscribed_at datetime DEFAULT CURRENT_TIMESTAMP,
+        ip_address varchar(100) DEFAULT '',
+        page_url varchar(500) DEFAULT '',
+        PRIMARY KEY  (id),
+        UNIQUE KEY email (email),
+        KEY subscribed_at (subscribed_at)
+    ) $charset_collate;";
+    
+    dbDelta($newsletter_sql);
+    
+    // Set default newsletter options
+    add_option('yallo_newsletter_enabled', false);
+    add_option('yallo_newsletter_delay', 5000);
+    add_option('yallo_newsletter_title', 'Stay Updated with YALLO');
+    add_option('yallo_newsletter_description', 'Get the latest insights on tech talent and enterprise architecture delivered to your inbox.');
+    add_option('yallo_newsletter_button_text', 'Subscribe Now');
+    add_option('yallo_newsletter_show_once', true);
 }
 register_activation_hook(__FILE__, 'yallo_chatbot_activate');
 
