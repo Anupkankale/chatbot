@@ -1,14 +1,14 @@
 /**
  * YALLO Talent Chatbot - Main JavaScript
+ * v1.0.2 — Short messages, email-first lead capture
  */
 
 (function($) {
     'use strict';
-    
-    // Chatbot Configuration
+
     const YALLO_CHATBOT = {
-        
-        // State variables
+
+        // ── State ────────────────────────────────────────────
         isOpen: false,
         isBotTyping: false,
         isChatFinished: false,
@@ -16,15 +16,16 @@
         isConsultationActive: false,
         consultationStep: 0,
         hasAutoOpened: false,
-        
-        // Data storage
+        leadSavedEarly: false,
+
+        // ── Data ─────────────────────────────────────────────
         messages: [],
         consultationData: {
             initial_intent: null,
             lead_type: null,
         },
-        
-        // DOM elements
+
+        // ── DOM ──────────────────────────────────────────────
         $window: null,
         $toggle: null,
         $messagesContainer: null,
@@ -33,532 +34,453 @@
         $sendBtn: null,
         $chatIcon: null,
         $closeIcon: null,
-        
-        // Questions configuration
+
+        // ── Welcome + Service Questions ───────────────────────
         questions: [
             {
                 id: 0,
                 keywords: ['hi', 'hello', 'start', 'menu'],
-                answer: "Hi, we're YALLO 👋\n\nWe connect tech strategy with architect-vetted talent so your programmes don't stall.\n\nHow can we help you today?",
+                answer: "Hi, we're **YALLO** 👋\n\nHow can we help?",
                 options: [
-                    { text: 'Hire tech talent / build a squad', nextId: 10, intent: 'Hire tech talent / build a squad' },
-                    { text: 'Stabilise a project / programme', nextId: 11, intent: 'Stabilise a project / programme' },
-                    { text: 'EA / IT strategy support', nextId: 12, intent: 'TS/EA as a Service' },
-                    { text: 'Not sure – need guidance', nextId: 13, intent: 'Not sure – need guidance' }
+                    { text: '🧑‍💻 Hire tech talent / squad',      nextId: 10, intent: 'Hire tech talent / build a squad' },
+                    { text: '🔧 Stabilise a project',             nextId: 11, intent: 'Stabilise a project / programme' },
+                    { text: '🏛 EA / IT strategy support',        nextId: 12, intent: 'TS/EA as a Service' },
+                    { text: '🤔 Not sure – need guidance',        nextId: 13, intent: 'Not sure – need guidance' }
                 ]
             },
             {
                 id: 10,
                 keywords: ['hire', 'talent', 'squad'],
-                answer: "Got it – you want help with **tech talent / squads**.\n\nWe specialise in architect-led, contract and project-based talent across AI, Data, Cloud, SAP, Oracle, Microsoft, Salesforce, Blue Yonder and more – with vetted profiles in ~72 hours.",
+                answer: "Great – **tech talent & squads**.\n\nVetted profiles across AI, Data, Cloud, SAP, Oracle, Salesforce & more – delivered in ~72 hrs.",
                 options: [
-                    { text: 'Share my details', nextId: 300, leadType: 'details' },
-                    { text: 'Book a call', nextId: 300, leadType: 'call' },
-                    { text: 'Back to start', nextId: 0 }
+                    { text: '📋 Share my details', nextId: 300, leadType: 'details' },
+                    { text: '📞 Book a call',       nextId: 300, leadType: 'call' },
+                    { text: '← Back',               nextId: 0 }
                 ]
             },
             {
                 id: 11,
                 keywords: ['stabilise', 'project', 'programme'],
-                answer: "You're looking to **stabilise a project / programme**.\n\nYALLO uses enterprise architects and delivery leads to quickly assess where talent, capability or role clarity is causing risk – then fill the gaps with the right specialists.",
+                answer: "Got it – **stabilise a project**.\n\nWe use architects & delivery leads to find and fix talent or role clarity gaps fast.",
                 options: [
-                    { text: 'Share my details', nextId: 300, leadType: 'details' },
-                    { text: 'Book a call', nextId: 300, leadType: 'call' },
-                    { text: 'Back to start', nextId: 0 }
+                    { text: '📋 Share my details', nextId: 300, leadType: 'details' },
+                    { text: '📞 Book a call',       nextId: 300, leadType: 'call' },
+                    { text: '← Back',               nextId: 0 }
                 ]
             },
             {
                 id: 12,
                 keywords: ['ea', 'strategy', 'architecture'],
-                answer: "You need **TS/EA as a Service** – architecture and strategy support.\n\nWe provide Chief Architect / domain architect capacity to align roadmaps, platforms and talent – without locking you into big consulting contracts.",
+                answer: "Understood – **EA / IT strategy**.\n\nWe provide Chief Architect capacity to align roadmaps and talent – no big consulting lock-in.",
                 options: [
-                    { text: 'Share my details', nextId: 300, leadType: 'details' },
-                    { text: 'Book a call', nextId: 300, leadType: 'call' },
-                    { text: 'Back to start', nextId: 0 }
+                    { text: '📋 Share my details', nextId: 300, leadType: 'details' },
+                    { text: '📞 Book a call',       nextId: 300, leadType: 'call' },
+                    { text: '← Back',               nextId: 0 }
                 ]
             },
             {
                 id: 13,
                 keywords: ['not sure', 'guidance'],
-                answer: "No problem – many leaders just know something's stuck.\n\nWe can quickly understand your context and recommend the right mix of talent and architecture support for you.",
+                answer: "No problem – we'll figure it out together.\n\nTell us a little and we'll recommend the right next step.",
                 options: [
-                    { text: 'Share my details', nextId: 300, leadType: 'details' },
-                    { text: 'Book a call', nextId: 300, leadType: 'call' },
-                    { text: 'Back to start', nextId: 0 }
+                    { text: '📋 Share my details', nextId: 300, leadType: 'details' },
+                    { text: '📞 Book a call',       nextId: 300, leadType: 'call' },
+                    { text: '← Back',               nextId: 0 }
                 ]
             }
         ],
-        
-        // Consultation questions
+
+        // ── Consultation Questions ────────────────────────────
+        // Lead saved after Q2 (name + email both collected)
         consultationQuestions: [
-            { key: 'name', text: "Great, let's get you connected to the right expert. What's your **full name**?" },
-            { key: 'email', text: "Thanks, {name}. What's the **best work email** for you?" },
-            { key: 'company', text: "What's your **company or organisation** name?" },
-            { key: 'location', text: "Where are you based? Please share **city + country** (e.g. Dubai, UAE or London, UK)." },
+            {
+                key: 'name',
+                text: "What's your **full name?**"
+            },
+            {
+                key: 'email',
+                text: "Thanks {name}! Your **work email?**"
+            },
+            {
+                key: 'company',
+                text: "Your **company** name?"
+            },
+            {
+                key: 'location',
+                text: "**Where** are you based?\n(e.g. Dubai, UAE)"
+            },
             {
                 key: 'industry',
-                text: "Which **industry** best fits your business?\n\nOptions:\n- Retail & Consumer\n- Manufacturing & Logistics\n- Banking & Financial Services\n- Government & Public Sector\n- Healthcare & Life Science\n- Telco & Media\n- Other"
+                text: "**Industry?**\n\n- Retail & Consumer\n- Manufacturing & Logistics\n- Banking & Financial Services\n- Government & Public Sector\n- Healthcare & Life Science\n- Telco & Media\n- Other"
             },
             {
                 key: 'platforms',
-                text: "Which core **platforms** are most relevant to your current roadmap?\n\nOptions:\n- SAP\n- Oracle\n- Microsoft\n- Salesforce\n- Blue Yonder\n- Workday\n- Other / Not sure"
+                text: "**Core platform?**\n\n- SAP\n- Oracle\n- Microsoft\n- Salesforce\n- Blue Yonder\n- Workday\n- Other / Not sure"
             },
             {
                 key: 'capabilities',
-                text: "Where do you feel the **biggest capability gap** is right now?\n\nOptions:\n- Data & AI\n- Digital & DevOps\n- Cloud & Infrastructure\n- Cybersecurity\n- Integration & Middleware\n- Emerging Technologies"
+                text: "**Biggest gap?**\n\n- Data & AI\n- Digital & DevOps\n- Cloud & Infrastructure\n- Cybersecurity\n- Integration & Middleware\n- Emerging Technologies"
             },
             {
                 key: 'service_type',
-                text: "Which sounds **closest to what you need**?\n\nOptions:\n- Talent in a Box\n- TS/EA as a Service\n- Managed IT CoE\n- Not sure – need guidance"
+                text: "**What do you need?**\n\n- Talent in a Box\n- TS/EA as a Service\n- Managed IT CoE\n- Not sure"
             },
             {
                 key: 'pain',
-                text: "In **1–2 lines**, what's the main **pain point** you want us to help with?\n\nExample: \"We can't hire strong SAP architects fast enough in KSA\" or \"Data platform migration is delayed due to talent gaps\"."
+                text: "In **one line** – what's the main challenge?"
             }
         ],
-        
-        /**
-         * Initialize the chatbot
-         */
+
+        // ── Init ─────────────────────────────────────────────
         init: function() {
             this.cacheDom();
             this.bindEvents();
             this.checkAutoOpen();
         },
-        
-        /**
-         * Cache DOM elements
-         */
+
         cacheDom: function() {
-            this.$window = $('#yallo-chatbot-window');
-            this.$toggle = $('#yallo-chat-toggle');
+            this.$window            = $('#yallo-chatbot-window');
+            this.$toggle            = $('#yallo-chat-toggle');
             this.$messagesContainer = $('#yallo-messages-container');
-            this.$form = $('#yallo-chat-form');
-            this.$input = $('#yallo-message-input');
-            this.$sendBtn = $('#yallo-send-btn');
-            this.$chatIcon = $('#yallo-chat-icon');
-            this.$closeIcon = $('#yallo-close-icon');
+            this.$form              = $('#yallo-chat-form');
+            this.$input             = $('#yallo-message-input');
+            this.$sendBtn           = $('#yallo-send-btn');
+            this.$chatIcon          = $('#yallo-chat-icon');
+            this.$closeIcon         = $('#yallo-close-icon');
         },
-        
-        /**
-         * Bind event listeners
-         */
+
+        // ── Events ───────────────────────────────────────────
         bindEvents: function() {
             const self = this;
-            
-            // Toggle chat window
-            this.$toggle.on('click', function() {
-                self.toggleChat();
-            });
-            
-            // Close button in header
-            $('#yallo-chat-close').on('click', function() {
-                self.closeChat();
-            });
-            
-            // Form submission
+
+            this.$toggle.on('click', function() { self.toggleChat(); });
+            $('#yallo-chat-close').on('click', function() { self.closeChat(); });
+
             this.$form.on('submit', function(e) {
                 e.preventDefault();
-                self.handleUserInput();
-            });
-            
-            // Scroll trigger for auto-open
-            if (yalloChatbot.autoOpen) {
-                $(window).on('scroll', function() {
-                    self.handleScrollTrigger();
-                });
-            }
-        },
-        
-        /**
-         * Check if should auto-open on page load
-         */
-        checkAutoOpen: function() {
-            // Don't auto-open immediately, wait for scroll
-        },
-        
-        /**
-         * Handle scroll trigger for auto-open
-         */
-        handleScrollTrigger: function() {
-            if (this.hasAutoOpened || this.isOpen) return;
-            
-            const scrollPercent = (window.scrollY / (document.documentElement.scrollHeight - window.innerHeight)) * 100;
-            
-            if (scrollPercent >= yalloChatbot.scrollTrigger) {
-                this.hasAutoOpened = true;
-                this.openChat();
-            }
-        },
-        
-        /**
-         * Toggle chat window
-         */
-        toggleChat: function() {
-            if (this.isOpen) {
-                this.closeChat();
-            } else {
-                this.openChat();
-            }
-        },
-        
-        /**
-         * Open chat window
-         */
-        openChat: function() {
-            this.isOpen = true;
-            this.$window.fadeIn(300);
-            this.$chatIcon.hide();
-            this.$closeIcon.show();
-            
-            // Start chat if no messages
-            if (this.messages.length === 0) {
-                this.startChat();
-            }
-        },
-        
-        /**
-         * Close chat window
-         */
-        closeChat: function() {
-            this.isOpen = false;
-            this.$window.addClass('closing');
-            
-            setTimeout(() => {
-                this.$window.hide().removeClass('closing');
-                this.$chatIcon.show();
-                this.$closeIcon.hide();
-            }, 200);
-        },
-        
-        /**
-         * Start new chat
-         */
-        startChat: function() {
-            this.isChatFinished = false;
-            this.isConsultationActive = false;
-            this.isInputDisabled = false;
-            this.consultationStep = 0;
-            this.consultationData = {
-                initial_intent: null,
-                lead_type: null
-            };
-            this.messages = [];
-            this.$messagesContainer.empty();
-            this.askQuestionById(0);
-        },
-        
-        /**
-         * Handle user text input
-         */
-        handleUserInput: function() {
-            const userAnswer = this.$input.val().trim();
-            
-            if (!userAnswer || this.isChatFinished || this.isInputDisabled) {
-                return;
-            }
-            
-            // Add user message
-            this.addMessage(userAnswer, 'user');
-            const userInput = this.$input.val();
-            this.$input.val('');
-            
-            // Show typing indicator
-            this.showTypingIndicator();
-            
-            // Process after delay
-            setTimeout(() => {
-                this.hideTypingIndicator();
-                
-                if (this.isConsultationActive) {
-                    this.handleConsultationInput(userInput);
-                } else {
-                    this.processUserMessage(userInput);
+                const msg = self.$input.val().trim();
+                if (msg) {
+                    self.$input.val('');
+                    self.handleUserInput(msg);
                 }
-            }, 700);
-        },
-        
-        /**
-         * Process user message to find matching question
-         */
-        processUserMessage: function(message) {
-            const lowerMessage = message.toLowerCase();
-            let foundQuestion = null;
-            
-            // Find matching question by keywords
-            for (let i = 0; i < this.questions.length; i++) {
-                const question = this.questions[i];
-                for (let j = 0; j < question.keywords.length; j++) {
-                    if (lowerMessage.includes(question.keywords[j].toLowerCase())) {
-                        foundQuestion = question;
-                        break;
+            });
+
+            this.$sendBtn.on('click', function() {
+                const msg = self.$input.val().trim();
+                if (msg) {
+                    self.$input.val('');
+                    self.handleUserInput(msg);
+                }
+            });
+
+            this.$input.on('keypress', function(e) {
+                if (e.which === 13 && !e.shiftKey) {
+                    e.preventDefault();
+                    const msg = self.$input.val().trim();
+                    if (msg) {
+                        self.$input.val('');
+                        self.handleUserInput(msg);
                     }
                 }
-                if (foundQuestion) break;
-            }
-            
-            if (foundQuestion) {
-                this.askQuestionById(foundQuestion.id);
-            } else {
-                // Start consultation flow
-                this.isConsultationActive = true;
-                this.consultationStep = 0;
-                this.isInputDisabled = false;
-                
-                const firstQuestion = this.consultationQuestions[0].text;
-                const fallbackText = "I may not have a direct answer for that here, but I can connect you with the right YALLO expert.\n\n" + firstQuestion;
-                
-                this.addMessage(fallbackText, 'bot');
+            });
+        },
+
+        // ── Auto open ────────────────────────────────────────
+        checkAutoOpen: function() {
+            if (!yalloChatbot.autoOpen) return;
+            const self = this;
+            $(window).on('scroll.yallo', function() {
+                const scrollPct = ($(window).scrollTop() / ($(document).height() - $(window).height())) * 100;
+                if (scrollPct >= yalloChatbot.scrollTrigger && !self.hasAutoOpened) {
+                    self.hasAutoOpened = true;
+                    $(window).off('scroll.yallo');
+                    self.openChat();
+                }
+            });
+        },
+
+        // ── Chat open / close / toggle ────────────────────────
+        toggleChat: function() {
+            this.isOpen ? this.closeChat() : this.openChat();
+        },
+
+        openChat: function() {
+            this.isOpen = true;
+            this.$window.addClass('yallo-open');
+            this.$chatIcon.hide();
+            this.$closeIcon.show();
+            if (this.messages.length === 0) {
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.askQuestionById(0);
+                }, 600);
             }
         },
-        
-        /**
-         * Ask question by ID
-         */
-        askQuestionById: function(id) {
-            const question = this.questions.find(q => q.id === id);
-            
-            if (question) {
-                this.isInputDisabled = !!(question.options && question.options.length > 0);
-                this.updateInputState();
-                this.addMessage(question.answer, 'bot', question.options || []);
-            }
+
+        closeChat: function() {
+            this.isOpen = false;
+            this.$window.removeClass('yallo-open');
+            this.$chatIcon.show();
+            this.$closeIcon.hide();
         },
-        
-        /**
-         * Handle option button click
-         */
-        handleOptionClick: function(option) {
-            // Add user message
-            this.addMessage(option.text, 'user');
-            
-            // Store intent and lead type
-            if (option.intent) {
-                this.consultationData.initial_intent = option.intent;
-            }
-            if (option.leadType) {
-                this.consultationData.lead_type = option.leadType;
-            }
-            
-            // Show typing indicator
+
+        // ── Message routing ───────────────────────────────────
+        handleUserInput: function(userMessage) {
+            if (this.isInputDisabled || this.isChatFinished) return;
+            this.addMessage(userMessage, 'user');
             this.showTypingIndicator();
-            
+
             setTimeout(() => {
                 this.hideTypingIndicator();
-                
+                if (this.isConsultationActive) {
+                    this.handleConsultationInput(userMessage);
+                } else {
+                    this.processQuestion(userMessage);
+                }
+            }, 500);
+        },
+
+        processQuestion: function(input) {
+            const lower = input.toLowerCase();
+            for (const q of this.questions) {
+                if (q.keywords.some(k => lower.includes(k))) {
+                    this.addMessage(q.answer, 'bot', q.options);
+                    return;
+                }
+            }
+            this.addMessage("Please choose one of the options below 👇", 'bot',
+                this.questions[0].options);
+        },
+
+        askQuestionById: function(id) {
+            const q = this.questions.find(q => q.id === id);
+            if (q) this.addMessage(q.answer, 'bot', q.options);
+        },
+
+        // ── Option click ──────────────────────────────────────
+        handleOptionClick: function(option) {
+            this.addMessage(option.text, 'user');
+            if (option.intent) this.consultationData.initial_intent = option.intent;
+            if (option.leadType) this.consultationData.lead_type = option.leadType;
+
+            this.showTypingIndicator();
+            setTimeout(() => {
+                this.hideTypingIndicator();
                 if (option.nextId === 300) {
                     this.startConsultation();
                 } else {
                     this.askQuestionById(option.nextId);
                 }
-            }, 700);
+            }, 500);
         },
-        
-        /**
-         * Start consultation flow
-         */
+
+        // ── Consultation ──────────────────────────────────────
         startConsultation: function() {
             this.isConsultationActive = true;
-            this.isInputDisabled = false;
-            this.consultationStep = 0;
+            this.isInputDisabled      = false;
+            this.consultationStep     = 0;
             this.updateInputState();
             this.askConsultationQuestion();
         },
-        
-        /**
-         * Ask consultation question
-         */
+
         askConsultationQuestion: function() {
-            const current = this.consultationQuestions[this.consultationStep];
-            
-            if (!current) return;
-            
-            let questionText = current.text;
-            
-            // Replace placeholders
-            for (const key in this.consultationData) {
-                questionText = questionText.replace(`{${key}}`, this.consultationData[key] || '');
-            }
-            
+            const q = this.consultationQuestions[this.consultationStep];
+            if (!q) return;
             this.isInputDisabled = false;
             this.updateInputState();
-            this.addMessage(questionText, 'bot');
+            // Replace {name} placeholder with collected name
+            const text = q.text.replace('{name}', this.consultationData.name || '');
+            this.addMessage(text, 'bot');
         },
-        
-        /**
-         * Handle consultation input
-         */
-        handleConsultationInput: function(userAnswer) {
-            const currentStepConfig = this.consultationQuestions[this.consultationStep];
-            
-            if (!currentStepConfig) return;
-            
-            this.consultationData[currentStepConfig.key] = userAnswer;
+
+        handleConsultationInput: function(answer) {
+            const q = this.consultationQuestions[this.consultationStep];
+            if (!q) return;
+
+            // Email validation
+            if (q.key === 'email' && !this.isValidEmail(answer)) {
+                this.addMessage("That doesn't look like a valid email. Please try again.", 'bot');
+                return;
+            }
+
+            this.consultationData[q.key] = answer;
             this.consultationStep++;
-            
+
+            // ✅ Save lead after BOTH name + email collected (step 2)
+            if (this.consultationStep === 2 && !this.leadSavedEarly) {
+                this.saveEarlyLead();
+            }
+
             if (this.consultationStep < this.consultationQuestions.length) {
-                this.askConsultationQuestion();
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.askConsultationQuestion();
+                }, 400);
             } else {
                 this.finalizeConsultation();
             }
         },
-        
-        /**
-         * Finalize consultation and submit lead
-         */
+
+        isValidEmail: function(email) {
+            return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+        },
+
+        // ── Final message ─────────────────────────────────────
         finalizeConsultation: function() {
-            this.isChatFinished = true;
+            this.isChatFinished  = true;
             this.isInputDisabled = true;
             this.updateInputState();
-            
-            const userName = this.consultationData.name || 'there';
-            const userEmail = this.consultationData.email || 'your email';
-            
-            const finalMessage = `Perfect, ${userName}. Thank you 🙌\n\n` +
-                `One of our **account managers or architecture leads** will review this and contact you at **${userEmail}** within **24 hours** with:\n` +
-                `- the right expert to speak with\n` +
-                `- recommended next step (call / workshop / talent shortlist)\n\n` +
-                `You can close this chat now – we'll take it from here.`;
-            
-            this.addMessage(finalMessage, 'bot');
-            this.submitLead();
+
+            const name  = this.consultationData.name  || 'there';
+            const email = this.consultationData.email || 'your email';
+
+            this.addMessage(
+                `Thanks, **${name}**! 🙌\n\nWe'll be in touch at **${email}** within 24 hrs.`,
+                'bot'
+            );
+
+            if (!this.leadSavedEarly) {
+                this.submitLead();
+            } else {
+                this.updateLead();
+            }
         },
-        
-        /**
-         * Submit lead via AJAX
-         */
-        submitLead: function() {
+
+        // ── AJAX: save lead after name + email ───────────────
+        saveEarlyLead: function() {
             const self = this;
-            
-            const leadData = {
-                action: 'yallo_submit_lead',
-                nonce: yalloChatbot.nonce,
-                name: this.consultationData.name || '',
-                email: this.consultationData.email || '',
-                company: this.consultationData.company || '',
-                location: this.consultationData.location || '',
-                industry: this.consultationData.industry || '',
-                platforms: this.consultationData.platforms || '',
-                capabilities: this.consultationData.capabilities || '',
-                service_type: this.consultationData.service_type || '',
-                pain: this.consultationData.pain || '',
+            this.leadSavedEarly = true;
+
+            $.post(yalloChatbot.ajaxUrl, {
+                action:         'yallo_submit_lead',
+                nonce:          yalloChatbot.nonce,
+                name:           this.consultationData.name  || '',
+                email:          this.consultationData.email || '',
+                company:        '',
+                location:       '',
+                industry:       '',
+                platforms:      '',
+                capabilities:   '',
+                service_type:   '',
+                pain:           '',
                 initial_intent: this.consultationData.initial_intent || '',
-                lead_type: this.consultationData.lead_type || '',
-                page_url: window.location.href
-            };
-            
-            $.ajax({
-                url: yalloChatbot.ajaxUrl,
-                type: 'POST',
-                data: leadData,
-                success: function(response) {
-                    console.log('Lead submitted successfully', response);
-                },
-                error: function(xhr, status, error) {
-                    console.error('Error submitting lead:', error);
+                lead_type:      this.consultationData.lead_type      || '',
+                page_url:       window.location.href,
+                early_save:     true
+            })
+            .done(function(r) {
+                if (r.success && r.data && r.data.lead_id) {
+                    self.savedLeadId = r.data.lead_id;
                 }
             });
         },
-        
-        /**
-         * Add message to chat
-         */
+
+        // ── AJAX: update lead with remaining answers ───────────
+        updateLead: function() {
+            $.post(yalloChatbot.ajaxUrl, {
+                action:       'yallo_update_lead',
+                nonce:        yalloChatbot.nonce,
+                email:        this.consultationData.email        || '',
+                company:      this.consultationData.company      || '',
+                location:     this.consultationData.location     || '',
+                industry:     this.consultationData.industry     || '',
+                platforms:    this.consultationData.platforms    || '',
+                capabilities: this.consultationData.capabilities || '',
+                service_type: this.consultationData.service_type || '',
+                pain:         this.consultationData.pain         || ''
+            });
+        },
+
+        // ── AJAX: full submit (fallback if early save missed) ──
+        submitLead: function() {
+            $.post(yalloChatbot.ajaxUrl, {
+                action:         'yallo_submit_lead',
+                nonce:          yalloChatbot.nonce,
+                name:           this.consultationData.name           || '',
+                email:          this.consultationData.email          || '',
+                company:        this.consultationData.company        || '',
+                location:       this.consultationData.location       || '',
+                industry:       this.consultationData.industry       || '',
+                platforms:      this.consultationData.platforms      || '',
+                capabilities:   this.consultationData.capabilities   || '',
+                service_type:   this.consultationData.service_type   || '',
+                pain:           this.consultationData.pain           || '',
+                initial_intent: this.consultationData.initial_intent || '',
+                lead_type:      this.consultationData.lead_type      || '',
+                page_url:       window.location.href
+            });
+        },
+
+        // ── Render message bubble ─────────────────────────────
         addMessage: function(text, sender, options) {
             options = options || [];
-            
-            const messageId = Date.now() + Math.random();
-            this.messages.push({ id: messageId, text, sender, options });
-            
-            // Create message element
-            const $message = $('<div>').addClass('yallo-message').addClass(sender);
-            const $bubble = $('<div>').addClass('yallo-message-bubble').text(text);
-            
-            // Convert markdown-style bold to HTML
-            const htmlText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            $bubble.html(htmlText);
-            
-            $message.append($bubble);
-            
-            // Add options if bot message
+            this.messages.push({ text, sender, options });
+
+            const $msg    = $('<div>').addClass('yallo-message').addClass(sender);
+            const $bubble = $('<div>').addClass('yallo-message-bubble');
+            const html    = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                                 .replace(/\n/g, '<br>');
+            $bubble.html(html);
+            $msg.append($bubble);
+
             if (sender === 'bot' && options.length > 0) {
-                const $optionsContainer = $('<div>').addClass('yallo-message-options');
-                
-                options.forEach(option => {
-                    const $btn = $('<button>')
-                        .addClass('yallo-option-btn')
-                        .text(option.text)
-                        .on('click', () => {
-                            this.handleOptionClick(option);
-                        });
-                    
-                    $optionsContainer.append($btn);
+                const $opts = $('<div>').addClass('yallo-message-options');
+                options.forEach(opt => {
+                    $('<button>').addClass('yallo-option-btn').text(opt.text)
+                        .on('click', () => this.handleOptionClick(opt))
+                        .appendTo($opts);
                 });
-                
-                $message.append($optionsContainer);
+                $msg.append($opts);
             }
-            
-            this.$messagesContainer.append($message);
+
+            this.$messagesContainer.append($msg);
             this.scrollToBottom();
         },
-        
-        /**
-         * Show typing indicator
-         */
+
+        // ── Typing indicator ──────────────────────────────────
         showTypingIndicator: function() {
             this.isBotTyping = true;
-            
-            const $typing = $('<div>').addClass('yallo-message bot').attr('id', 'yallo-typing');
-            const $indicator = $('<div>').addClass('yallo-typing-indicator');
-            
-            for (let i = 0; i < 3; i++) {
-                $indicator.append($('<span>').addClass('yallo-typing-dot'));
-            }
-            
-            $typing.append($indicator);
-            this.$messagesContainer.append($typing);
+            const $t = $('<div>').addClass('yallo-message bot').attr('id', 'yallo-typing');
+            const $i = $('<div>').addClass('yallo-typing-indicator');
+            for (let i = 0; i < 3; i++) $i.append($('<span>').addClass('yallo-typing-dot'));
+            $t.append($i);
+            this.$messagesContainer.append($t);
             this.scrollToBottom();
         },
-        
-        /**
-         * Hide typing indicator
-         */
+
         hideTypingIndicator: function() {
             this.isBotTyping = false;
             $('#yallo-typing').remove();
         },
-        
-        /**
-         * Update input state
-         */
+
+        // ── Input state ───────────────────────────────────────
         updateInputState: function() {
             if (this.isChatFinished) {
-                this.$input.prop('disabled', true).attr('placeholder', 'Chat has ended. Thank you!');
+                this.$input.prop('disabled', true).attr('placeholder', 'Chat ended – thank you!');
                 this.$sendBtn.prop('disabled', true);
             } else if (this.isInputDisabled) {
-                this.$input.prop('disabled', true).attr('placeholder', 'Please use the options above...');
+                this.$input.prop('disabled', true).attr('placeholder', 'Please choose an option above…');
                 this.$sendBtn.prop('disabled', true);
             } else if (this.isConsultationActive) {
-                this.$input.prop('disabled', false).attr('placeholder', 'Please type your answer...');
+                this.$input.prop('disabled', false).attr('placeholder', 'Type your answer…');
                 this.$sendBtn.prop('disabled', false);
             } else {
-                this.$input.prop('disabled', false).attr('placeholder', 'Type your message or use the options...');
+                this.$input.prop('disabled', false).attr('placeholder', 'Type a message…');
                 this.$sendBtn.prop('disabled', false);
             }
         },
-        
-        /**
-         * Scroll to bottom of messages
-         */
+
         scrollToBottom: function() {
             setTimeout(() => {
                 this.$messagesContainer.scrollTop(this.$messagesContainer[0].scrollHeight);
             }, 100);
         }
     };
-    
-    // Initialize when document is ready
+
     $(document).ready(function() {
         YALLO_CHATBOT.init();
     });
-    
+
 })(jQuery);
