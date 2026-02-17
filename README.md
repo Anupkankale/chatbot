@@ -2,21 +2,6 @@
 
 A professional, AI-powered chatbot for YALLO talent acquisition and consultation services. Features a sleek dark theme with the YALLO brand color (#BFA25E).
 
-## Features
-
-- ✅ **Intelligent Conversation Flow** - Multi-level question routing with conditional logic
-- ✅ **Lead Capture System** - Complete consultation workflow with 9-step data collection
-- ✅ **Auto-Open on Scroll** - Configurable scroll trigger for automatic chatbot opening
-- ✅ **Email Notifications** - Instant notifications when new leads are submitted
-- ✅ **Database Storage** - All leads stored in WordPress database with full details
-- ✅ **Admin Dashboard** - View, manage, and export leads from WordPress admin
-- ✅ **Mobile Responsive** - Fully optimized for all device sizes
-- ✅ **Dark Theme** - Modern dark UI with YALLO brand colors
-- ✅ **Accessibility** - WCAG 2.1 compliant with keyboard navigation and screen reader support
-- ✅ **AJAX-Powered** - Smooth interactions without page reloads
-- ✅ **Typing Indicators** - Visual feedback during bot responses
-- ✅ **No Dependencies** - Only requires jQuery (included with WordPress)
-
 ## Installation
 
 ### Method 1: Upload via WordPress Admin
