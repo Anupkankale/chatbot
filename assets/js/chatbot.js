@@ -136,6 +136,26 @@
             this.cacheDom();
             this.bindEvents();
             this.checkAutoOpen();
+
+            // ── Startup diagnostics ──────────────────────────
+            const checks = {
+                'Toggle button (#yallo-chat-toggle)':    this.$toggle.length,
+                'Chat window (#yallo-chatbot-window)':   this.$window.length,
+                'Messages container':                    this.$messagesContainer.length,
+                'Input field':                           this.$input.length,
+                'Send button':                           this.$sendBtn.length,
+                'yalloChatbot config':                   typeof yalloChatbot !== 'undefined' ? 1 : 0,
+            };
+            let allOk = true;
+            Object.keys(checks).forEach(function(label) {
+                if (!checks[label]) {
+                    console.error('❌ YALLO Chatbot: Missing — ' + label);
+                    allOk = false;
+                }
+            });
+            if (allOk) {
+                console.log('✅ YALLO Chatbot: Initialised OK. Click the button to open.');
+            }
         },
 
         cacheDom: function() {

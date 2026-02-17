@@ -1,6 +1,6 @@
-<div id="yallo-chatbot-container" class="yallo-chatbot-wrapper">
+ <div id="yallo-chatbot-container" class="yallo-chatbot-wrapper">
     <!-- Chatbot Window -->
-    <div id="yallo-chatbot-window" class="yallo-chat-window" style="display: none;">
+    <div id="yallo-chatbot-window" class="yallo-chat-window">
         <div class="yallo-chat-container">
             <!-- Header -->
             <div class="yallo-chat-header">
