@@ -22,14 +22,19 @@
     max-width: calc(100vw - 40px);
     height: 70vh;
     max-height: 700px;
-    display: flex;
+    display: none;
     flex-direction: column;
     border-radius: 16px;
     background: #1a1a1a;
     border: 1px solid #333;
     box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.3), 0 10px 10px -5px rgba(0, 0, 0, 0.2);
     overflow: hidden;
-    animation: slideInUp 0.3s ease-out;
+}
+
+/* Visible when open */
+.yallo-chat-window.yallo-open {
+    display: flex;
+    animation: slideInUp 0.3s ease-out forwards;
 }
 
 @keyframes slideInUp {
@@ -40,21 +45,6 @@
     to {
         opacity: 1;
         transform: translateY(0) scale(1);
-    }
-}
-
-.yallo-chat-window.closing {
-    animation: slideOutDown 0.2s ease-in;
-}
-
-@keyframes slideOutDown {
-    from {
-        opacity: 1;
-        transform: translateY(0) scale(1);
-    }
-    to {
-        opacity: 0;
-        transform: translateY(40px) scale(0.95);
     }
 }
 
@@ -132,19 +122,20 @@
     background-color: #444;
 }
 
-/* Message Bubble 
+/* Message Bubble */
 .yallo-message {
     margin-bottom: 8px;
     display: flex;
-}*/
+}
 
 .yallo-message.user {
     justify-content: flex-end;
 }
- 
+
 .yallo-message.bot {
     justify-content: flex-start;
-} 
+}
+
 .yallo-message-bubble {
     max-width: 75%;
     padding: 12px 16px;
@@ -171,7 +162,6 @@
     background: #BFA25E;
     color: #000;
     font-weight: 500;
-    margin: 8px 0;
 }
 
 .yallo-message.bot .yallo-message-bubble {
