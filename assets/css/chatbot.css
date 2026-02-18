@@ -125,7 +125,7 @@
 /* Message Bubble */
 .yallo-message {
     margin-bottom: 8px;
-    display: flex;
+     
 }
 
 .yallo-message.user {
