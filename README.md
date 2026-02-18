@@ -2,6 +2,8 @@
 
 A professional, AI-powered chatbot for YALLO talent acquisition and consultation services. Features a sleek dark theme with the YALLO brand color (#BFA25E).
 
+
+
 ## Installation
 
 ### Method 1: Upload via WordPress Admin
