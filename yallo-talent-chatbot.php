@@ -861,6 +861,7 @@ register_activation_hook(__FILE__, 'yallo_chatbot_activate');
 /**
  * Plugin deactivation
  */
+ 
 function yallo_chatbot_deactivate() {
     // Clean up if needed
 }
