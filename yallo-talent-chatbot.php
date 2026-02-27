@@ -1,4 +1,4 @@
-<?php
+ <?php
 /**
  * Plugin Name: YALLO Talent Chatbot
  * Plugin URI: https://yallo.com
@@ -69,6 +69,10 @@ class YALLO_Talent_Chatbot {
         // Register lead update AJAX endpoint (for early lead capture)
         add_action('wp_ajax_yallo_update_lead', array($this, 'handle_lead_update'));
         add_action('wp_ajax_nopriv_yallo_update_lead', array($this, 'handle_lead_update'));
+        
+        // Load chatbot questions dynamically
+        add_action('wp_ajax_yallo_get_questions', array($this, 'get_chatbot_questions'));
+        add_action('wp_ajax_nopriv_yallo_get_questions', array($this, 'get_chatbot_questions'));
         
         // Register newsletter AJAX endpoints
         add_action('wp_ajax_yallo_newsletter_subscribe', array($this, 'handle_newsletter_subscription'));
@@ -668,6 +672,15 @@ class YALLO_Talent_Chatbot {
         
         add_submenu_page(
             'yallo-chatbot',
+            'Edit Questions',
+            'Questions',
+            'manage_options',
+            'yallo-chatbot-questions',
+            array($this, 'render_questions_page')
+        );
+        
+        add_submenu_page(
+            'yallo-chatbot',
             'Leads',
             'Leads',
             'manage_options',
@@ -695,6 +708,9 @@ class YALLO_Talent_Chatbot {
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_notification_email');
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_display_mode');
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_specific_pages');
+        
+        // Chatbot questions (stored as JSON)
+        register_setting('yallo_chatbot_settings', 'yallo_chatbot_questions_json');
         register_setting('yallo_chatbot_settings', 'yallo_chatbot_bypass_cache');
 
         // Newsletter popup settings
@@ -756,6 +772,13 @@ class YALLO_Talent_Chatbot {
     }
     
     /**
+     * Render questions editor page
+     */
+    public function render_questions_page() {
+        include YALLO_CHATBOT_PLUGIN_DIR . 'admin/questions.php';
+    }
+    
+    /**
      * Render leads page
      */
     public function render_leads_page() {
@@ -776,6 +799,61 @@ class YALLO_Talent_Chatbot {
         $settings_link = '<a href="' . admin_url('admin.php?page=yallo-chatbot') . '">Settings</a>';
         array_unshift($links, $settings_link);
         return $links;
+    }
+    
+    /**
+     * Get chatbot questions via AJAX
+     */
+    public function get_chatbot_questions() {
+        $questions = get_option('yallo_chatbot_questions', null);
+        
+        // If no custom questions, return defaults
+        if (!$questions) {
+            $questions = array(
+                'welcome' => array(
+                    'text' => "Hi, we're YALLO 👋\n\nHow can we help?"
+                ),
+                'services' => array(
+                    array(
+                        'text' => 'Hire tech talent / build a squad',
+                        'message' => "Great – tech talent & squads.\n\nVetted profiles across AI, Data, Cloud, SAP, Oracle, Salesforce & more – delivered in ~72 hrs.",
+                        'intent' => 'Hire tech talent / build a squad',
+                        'lead_type' => 'details'
+                    ),
+                    array(
+                        'text' => 'Stabilise a troubled project',
+                        'message' => "Got it – stabilise a project.\n\nWe use architects & delivery leads to find and fix talent or role clarity gaps fast.",
+                        'intent' => 'Stabilise a troubled project',
+                        'lead_type' => 'call'
+                    ),
+                    array(
+                        'text' => 'Enterprise Architecture / IT strategy',
+                        'message' => "Understood – EA / IT strategy.\n\nWe provide Chief Architect capacity to align roadmaps and talent – no big consulting lock-in.",
+                        'intent' => 'Enterprise Architecture / IT strategy',
+                        'lead_type' => 'call'
+                    ),
+                    array(
+                        'text' => 'Not sure / explore options',
+                        'message' => "No problem – we'll figure it out together.\n\nTell us a little and we'll recommend the right next step.",
+                        'intent' => 'Not sure / explore options',
+                        'lead_type' => 'details'
+                    )
+                ),
+                'consultation' => array(
+                    array('key' => 'name', 'text' => "What's your **full name?**"),
+                    array('key' => 'email', 'text' => "Thanks {name}! Your **work email?**"),
+                    array('key' => 'company', 'text' => "Your **company** name?"),
+                    array('key' => 'location', 'text' => "**Where** are you based?\n(e.g. Dubai, UAE)"),
+                    array('key' => 'industry', 'text' => "**Industry?**\n\n- Retail & Consumer\n- Manufacturing & Logistics\n- Banking & Financial Services\n- Government & Public Sector\n- Healthcare & Life Science\n- Telco & Media\n- Other"),
+                    array('key' => 'platforms', 'text' => "**Core platform?**\n\n- SAP\n- Oracle\n- Microsoft\n- Salesforce\n- Blue Yonder\n- Workday\n- Other / Not sure"),
+                    array('key' => 'capabilities', 'text' => "**Biggest gap?**\n\n- Data & AI\n- Digital & DevOps\n- Cloud & Infrastructure\n- Cybersecurity\n- Integration & Middleware\n- Emerging Technologies"),
+                    array('key' => 'service_type', 'text' => "**What do you need?**\n\n- Talent in a Box\n- TS/EA as a Service\n- Managed IT CoE\n- Not sure"),
+                    array('key' => 'pain', 'text' => "In **one line** – what's the main challenge?")
+                )
+            );
+        }
+        
+        wp_send_json_success($questions);
     }
 }
 
@@ -861,7 +939,6 @@ register_activation_hook(__FILE__, 'yallo_chatbot_activate');
 /**
  * Plugin deactivation
  */
- 
 function yallo_chatbot_deactivate() {
     // Clean up if needed
 }
