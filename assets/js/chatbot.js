@@ -36,7 +36,136 @@
         $closeIcon: null,
 
         // ── Welcome + Service Questions ───────────────────────
-        questions: [
+        // These are loaded dynamically from WordPress on init
+        questions: [],
+        
+        // ── Consultation Questions ────────────────────────────
+        // These are loaded dynamically from WordPress on init
+        consultationQuestions: [],
+        
+        // ── Load Questions Dynamically ─────────────────────────
+        loadQuestions: function() {
+            const self = this;
+            const cached = localStorage.getItem('yallo_questions');
+            const cacheTime = localStorage.getItem('yallo_questions_time');
+            const now = Date.now();
+            
+            // Use cache if less than 5 minutes old
+            if (cached && cacheTime && (now - parseInt(cacheTime)) < 300000) {
+                try {
+                    const data = JSON.parse(cached);
+                    self.applyQuestions(data);
+                    return Promise.resolve();
+                } catch(e) {
+                    console.error('YALLO: Cache parse error', e);
+                }
+            }
+            
+            // Fetch from server
+            return $.post(yalloChatbot.ajaxUrl, {
+                action: 'yallo_get_questions'
+            })
+            .done(function(response) {
+                if (response.success && response.data) {
+                    localStorage.setItem('yallo_questions', JSON.stringify(response.data));
+                    localStorage.setItem('yallo_questions_time', now.toString());
+                    self.applyQuestions(response.data);
+                } else {
+                    console.warn('YALLO: Questions load failed, using defaults');
+                    self.useDefaultQuestions();
+                }
+            })
+            .fail(function() {
+                console.warn('YALLO: AJAX failed, using default questions');
+                self.useDefaultQuestions();
+            });
+        },
+        
+        useDefaultQuestions: function() {
+            // Fallback to hardcoded defaults
+            const defaultData = {
+                welcome: {
+                    text: "Hi, we're YALLO 👋\n\nHow can we help?"
+                },
+                services: [
+                    {
+                        text: 'Hire tech talent / build a squad',
+                        message: "Great – tech talent & squads.\n\nVetted profiles across AI, Data, Cloud, SAP, Oracle, Salesforce & more – delivered in ~72 hrs.",
+                        intent: 'Hire tech talent / build a squad',
+                        lead_type: 'details'
+                    },
+                    {
+                        text: 'Stabilise a troubled project',
+                        message: "Got it – stabilise a project.\n\nWe use architects & delivery leads to find and fix talent or role clarity gaps fast.",
+                        intent: 'Stabilise a troubled project',
+                        lead_type: 'call'
+                    },
+                    {
+                        text: 'Enterprise Architecture / IT strategy',
+                        message: "Understood – EA / IT strategy.\n\nWe provide Chief Architect capacity to align roadmaps and talent – no big consulting lock-in.",
+                        intent: 'Enterprise Architecture / IT strategy',
+                        lead_type: 'call'
+                    },
+                    {
+                        text: 'Not sure / explore options',
+                        message: "No problem – we'll figure it out together.\n\nTell us a little and we'll recommend the right next step.",
+                        intent: 'Not sure / explore options',
+                        lead_type: 'details'
+                    }
+                ],
+                consultation: [
+                    {key: 'name', text: "What's your **full name?**"},
+                    {key: 'email', text: "Thanks {name}! Your **work email?**"},
+                    {key: 'company', text: "Your **company** name?"},
+                    {key: 'location', text: "**Where** are you based?\n(e.g. Dubai, UAE)"},
+                    {key: 'industry', text: "**Industry?**\n\n- Retail & Consumer\n- Manufacturing & Logistics\n- Banking & Financial Services\n- Government & Public Sector\n- Healthcare & Life Science\n- Telco & Media\n- Other"},
+                    {key: 'platforms', text: "**Core platform?**\n\n- SAP\n- Oracle\n- Microsoft\n- Salesforce\n- Blue Yonder\n- Workday\n- Other / Not sure"},
+                    {key: 'capabilities', text: "**Biggest gap?**\n\n- Data & AI\n- Digital & DevOps\n- Cloud & Infrastructure\n- Cybersecurity\n- Integration & Middleware\n- Emerging Technologies"},
+                    {key: 'service_type', text: "**What do you need?**\n\n- Talent in a Box\n- TS/EA as a Service\n- Managed IT CoE\n- Not sure"},
+                    {key: 'pain', text: "In **one line** – what's the main challenge?"}
+                ]
+            };
+            this.applyQuestions(defaultData);
+            console.log('✅ Default questions loaded');
+        },
+        
+        applyQuestions: function(data) {
+            // Build questions array from loaded data
+            this.questions = [
+                {
+                    id: 0,
+                    keywords: ['hi', 'hello', 'start', 'menu'],
+                    answer: data.welcome.text,
+                    options: data.services.map((service, i) => ({
+                        text: service.text,
+                        nextId: 10 + i,
+                        intent: service.intent,
+                        leadType: service.lead_type
+                    }))
+                }
+            ];
+            
+            // Add service response questions with consultation buttons
+            data.services.forEach((service, i) => {
+                this.questions.push({
+                    id: 10 + i,
+                    answer: service.message,
+                    options: [
+                        { text: '📋 Share my details', nextId: 300, leadType: service.lead_type },
+                        { text: '← Back', nextId: 0 }
+                    ]
+                });
+            });
+            
+            // Build consultation questions from loaded data
+            this.consultationQuestions = data.consultation.map(q => ({
+                key: q.key,
+                text: q.text
+            }));
+        },
+
+        // ── OLD HARDCODED QUESTIONS (kept as fallback) ─────────
+        questions_backup: [
             {
                 id: 0,
                 keywords: ['hi', 'hello', 'start', 'menu'],
@@ -133,29 +262,37 @@
 
         // ── Init ─────────────────────────────────────────────
         init: function() {
+            const self = this;
+            
+            // Cache DOM elements immediately (before loading questions)
             this.cacheDom();
-            this.bindEvents();
-            this.checkAutoOpen();
+            
+            // Load questions from WordPress, then initialize rest
+            this.loadQuestions().always(function() {
+                self.bindEvents();
+                self.checkAutoOpen();
 
-            // ── Startup diagnostics ──────────────────────────
-            const checks = {
-                'Toggle button (#yallo-chat-toggle)':    this.$toggle.length,
-                'Chat window (#yallo-chatbot-window)':   this.$window.length,
-                'Messages container':                    this.$messagesContainer.length,
-                'Input field':                           this.$input.length,
-                'Send button':                           this.$sendBtn.length,
-                'yalloChatbot config':                   typeof yalloChatbot !== 'undefined' ? 1 : 0,
-            };
-            let allOk = true;
-            Object.keys(checks).forEach(function(label) {
-                if (!checks[label]) {
-                    console.error('❌ YALLO Chatbot: Missing — ' + label);
-                    allOk = false;
+                // ── Startup diagnostics ──────────────────────────
+                const checks = {
+                    'Toggle button (#yallo-chat-toggle)':    self.$toggle.length,
+                    'Chat window (#yallo-chatbot-window)':   self.$window.length,
+                    'Messages container':                    self.$messagesContainer.length,
+                    'Input field':                           self.$input.length,
+                    'Send button':                           self.$sendBtn.length,
+                    'yalloChatbot config':                   typeof yalloChatbot !== 'undefined' ? 1 : 0,
+                    'Questions loaded':                      self.questions.length > 0 ? 1 : 0,
+                };
+                let allOk = true;
+                Object.keys(checks).forEach(function(label) {
+                    if (!checks[label]) {
+                        console.error('❌ YALLO Chatbot: Missing — ' + label);
+                        allOk = false;
+                    }
+                });
+                if (allOk) {
+                    console.log('✅ YALLO Chatbot: Initialised OK. Click the button to open.');
                 }
             });
-            if (allOk) {
-                console.log('✅ YALLO Chatbot: Initialised OK. Click the button to open.');
-            }
         },
 
         cacheDom: function() {
@@ -225,16 +362,30 @@
         },
 
         openChat: function() {
+            const self = this;
             this.isOpen = true;
             this.$window.addClass('yallo-open');
             this.$chatIcon.hide();
             this.$closeIcon.show();
+            
             if (this.messages.length === 0) {
-                this.showTypingIndicator();
-                setTimeout(() => {
-                    this.hideTypingIndicator();
-                    this.askQuestionById(0);
-                }, 600);
+                // Safety check: if questions not loaded yet, wait
+                if (this.questions.length === 0) {
+                    console.log('⏳ Waiting for questions to load...');
+                    setTimeout(function() {
+                        self.showTypingIndicator();
+                        setTimeout(() => {
+                            self.hideTypingIndicator();
+                            self.askQuestionById(0);
+                        }, 600);
+                    }, 500);
+                } else {
+                    this.showTypingIndicator();
+                    setTimeout(() => {
+                        this.hideTypingIndicator();
+                        this.askQuestionById(0);
+                    }, 600);
+                }
             }
         },
 
@@ -287,12 +438,51 @@
             this.showTypingIndicator();
             setTimeout(() => {
                 this.hideTypingIndicator();
+                
+                // Handle action-based buttons
+                if (option.action) {
+                    this.handleAction(option.action, option);
+                    return;
+                }
+                
+                // Handle nextId navigation
                 if (option.nextId === 300) {
                     this.startConsultation();
-                } else {
+                } else if (option.nextId) {
                     this.askQuestionById(option.nextId);
                 }
             }, 500);
+        },
+        
+        // ── Handle action buttons ─────────────────────────────
+        handleAction: function(action, option) {
+            if (action === 'continue') {
+                // User wants to continue with remaining questions
+                this.continueToFullForm();
+            } else if (action === 'submit') {
+                this.confirmAndSubmit();
+            } else if (action === 'edit') {
+                this.editInformation();
+            } else if (action === 'cancel') {
+                this.cancelConsultation();
+            } else if (action === 'edit_field' && option.field) {
+                this.handleFieldEdit(option.field);
+            } else if (action === 'back') {
+                this.finalizeConsultation();
+            }
+        },
+        
+        // ── Continue to remaining questions (Location onwards) ─
+        continueToFullForm: function() {
+            this.isInputDisabled = false;
+            this.updateInputState();
+            
+            // Continue from question 4 (location)
+            this.showTypingIndicator();
+            setTimeout(() => {
+                this.hideTypingIndicator();
+                this.askConsultationQuestion();
+            }, 400);
         },
 
         // ── Consultation ──────────────────────────────────────
@@ -332,6 +522,31 @@
                 this.saveEarlyLead();
             }
 
+            // PAUSE after Company (step 3) - Show thank you + optional continue button
+            if (this.consultationStep === 3) {
+                // Update lead with company info
+                if (this.leadSavedEarly) {
+                    this.updateLead();
+                }
+                
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.addMessage(
+                        `Thanks for connecting with **YALLO**! 🙏\n\nOur team will get back to you within 24 hours.\n\nWould you like to give more information on your requirement?`,
+                        'bot',
+                        [
+                            { text: '📋 Give More Information', action: 'continue' }
+                        ]
+                    );
+                    
+                    // Chat is basically finished, but user can optionally continue
+                    this.isInputDisabled = true;
+                    this.updateInputState();
+                }, 600);
+                return; // Stop here, wait for optional button click
+            }
+
             if (this.consultationStep < this.consultationQuestions.length) {
                 this.showTypingIndicator();
                 setTimeout(() => {
@@ -347,7 +562,7 @@
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
         },
 
-        // ── Final message ─────────────────────────────────────
+        // ── Final submission after all 9 questions ───────────
         finalizeConsultation: function() {
             this.isChatFinished  = true;
             this.isInputDisabled = true;
