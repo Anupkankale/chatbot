@@ -1,4 +1,4 @@
- /**
+/**
  * YALLO Talent Chatbot - Main JavaScript
  * v1.0.2 — Short messages, email-first lead capture
  */
@@ -438,12 +438,51 @@
             this.showTypingIndicator();
             setTimeout(() => {
                 this.hideTypingIndicator();
+                
+                // Handle action-based buttons
+                if (option.action) {
+                    this.handleAction(option.action, option);
+                    return;
+                }
+                
+                // Handle nextId navigation
                 if (option.nextId === 300) {
                     this.startConsultation();
-                } else {
+                } else if (option.nextId) {
                     this.askQuestionById(option.nextId);
                 }
             }, 500);
+        },
+        
+        // ── Handle action buttons ─────────────────────────────
+        handleAction: function(action, option) {
+            if (action === 'continue') {
+                // User wants to continue with remaining questions
+                this.continueToFullForm();
+            } else if (action === 'submit') {
+                this.confirmAndSubmit();
+            } else if (action === 'edit') {
+                this.editInformation();
+            } else if (action === 'cancel') {
+                this.cancelConsultation();
+            } else if (action === 'edit_field' && option.field) {
+                this.handleFieldEdit(option.field);
+            } else if (action === 'back') {
+                this.finalizeConsultation();
+            }
+        },
+        
+        // ── Continue to remaining questions (Location onwards) ─
+        continueToFullForm: function() {
+            this.isInputDisabled = false;
+            this.updateInputState();
+            
+            // Continue from question 4 (location)
+            this.showTypingIndicator();
+            setTimeout(() => {
+                this.hideTypingIndicator();
+                this.askConsultationQuestion();
+            }, 400);
         },
 
         // ── Consultation ──────────────────────────────────────
@@ -483,6 +522,31 @@
                 this.saveEarlyLead();
             }
 
+            // PAUSE after Company (step 3) - Show thank you + optional continue button
+            if (this.consultationStep === 3) {
+                // Update lead with company info
+                if (this.leadSavedEarly) {
+                    this.updateLead();
+                }
+                
+                this.showTypingIndicator();
+                setTimeout(() => {
+                    this.hideTypingIndicator();
+                    this.addMessage(
+                        `Thanks for connecting with **YALLO**! 🙏\n\nOur team will get back to you within 24 hours.\n\nWould you like to give more information on your requirement?`,
+                        'bot',
+                        [
+                            { text: '📋 Give More Information', action: 'continue' }
+                        ]
+                    );
+                    
+                    // Chat is basically finished, but user can optionally continue
+                    this.isInputDisabled = true;
+                    this.updateInputState();
+                }, 600);
+                return; // Stop here, wait for optional button click
+            }
+
             if (this.consultationStep < this.consultationQuestions.length) {
                 this.showTypingIndicator();
                 setTimeout(() => {
@@ -498,7 +562,7 @@
             return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
         },
 
-        // ── Final message ─────────────────────────────────────
+        // ── Final submission after all 9 questions ───────────
         finalizeConsultation: function() {
             this.isChatFinished  = true;
             this.isInputDisabled = true;
