@@ -70,6 +70,13 @@
             <?php wp_nonce_field('yallo_bulk_action'); ?>
             <input type="hidden" name="action" value="bulk_delete">
             
+            <!-- Export CSV -->
+            <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-bottom: 10px;">
+                <?php wp_nonce_field('yallo_export_leads'); ?>
+                <input type="hidden" name="action" value="yallo_export_leads">
+                <button type="submit" class="button button-secondary">Export CSV</button>
+            </form>
+
             <div class="tablenav top">
                 <div class="alignleft actions bulkactions">
                     <button type="submit" class="button action" onclick="return confirm('Are you sure you want to delete selected leads?');">Delete Selected</button>
@@ -102,6 +109,7 @@
                         <th>Company</th>
                         <th>Intent</th>
                         <th>Service Type</th>
+                        <th>Status</th>
                         <th>Date</th>
                         <th>Actions</th>
                     </tr>
@@ -117,6 +125,22 @@
                             <td><?php echo esc_html($lead->company); ?></td>
                             <td><?php echo esc_html($lead->initial_intent); ?></td>
                             <td><?php echo esc_html($lead->service_type); ?></td>
+                            <td>
+                                <select class="yallo-lead-status" data-lead-id="<?php echo esc_attr($lead->id); ?>">
+                                    <?php
+                                    $current_status = isset($lead->status) ? $lead->status : 'new';
+                                    $statuses = array('new' => 'New', 'contacted' => 'Contacted', 'converted' => 'Converted', 'lost' => 'Lost');
+                                    foreach ($statuses as $val => $label) {
+                                        printf(
+                                            '<option value="%s"%s>%s</option>',
+                                            esc_attr($val),
+                                            selected($current_status, $val, false),
+                                            esc_html($label)
+                                        );
+                                    }
+                                    ?>
+                                </select>
+                            </td>
                             <td><?php echo esc_html(date('M j, Y g:i A', strtotime($lead->created_at))); ?></td>
                             <td>
                                 <a href="#" class="button button-small view-lead-details" data-lead-id="<?php echo esc_attr($lead->id); ?>">View Details</a>
@@ -128,7 +152,7 @@
                         
                         <!-- Hidden details row -->
                         <tr id="lead-details-<?php echo esc_attr($lead->id); ?>" style="display: none;">
-                            <td colspan="8" style="background: #f9f9f9; padding: 20px;">
+                            <td colspan="9" style="background: #f9f9f9; padding: 20px;">
                                 <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px;">
                                     <div>
                                         <strong style="color: #BFA25E;">Full Name:</strong><br>
@@ -228,12 +252,34 @@ jQuery(document).ready(function($) {
         e.preventDefault();
         var leadId = $(this).data('lead-id');
         $('#lead-details-' + leadId).toggle();
-        
+
         if ($('#lead-details-' + leadId).is(':visible')) {
             $(this).text('Hide Details');
         } else {
             $(this).text('View Details');
         }
+    });
+
+    // Lead status update via AJAX
+    $(document).on('change', '.yallo-lead-status', function() {
+        var $select = $(this);
+        var leadId  = $select.data('lead-id');
+        var status  = $select.val();
+
+        $.post(ajaxurl, {
+            action:  'yallo_update_lead_status',
+            nonce:   '<?php echo wp_create_nonce('yallo_chatbot_nonce'); ?>',
+            lead_id: leadId,
+            status:  status
+        }, function(response) {
+            if (response.success) {
+                $select.css('border-color', '#46b450');
+                setTimeout(function() { $select.css('border-color', ''); }, 1500);
+            } else {
+                alert('Failed to update status.');
+                location.reload();
+            }
+        });
     });
 });
 </script>
@@ -263,4 +309,17 @@ jQuery(document).ready(function($) {
     background: #d4b670;
     border-color: #d4b670;
 }
+
+.yallo-lead-status {
+    font-size: 12px;
+    padding: 3px 6px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+    transition: border-color 0.3s;
+}
+
+.yallo-lead-status option[value="new"]       { color: #0073aa; }
+.yallo-lead-status option[value="contacted"] { color: #ff8c00; }
+.yallo-lead-status option[value="converted"] { color: #46b450; }
+.yallo-lead-status option[value="lost"]      { color: #dc3232; }
 </style>
