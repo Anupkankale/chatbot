@@ -125,7 +125,6 @@
 /* Message Bubble */
 .yallo-message {
     margin-bottom: 8px;
-     
 }
 
 .yallo-message.user {
@@ -410,6 +409,24 @@
 .yallo-message-input:focus {
     outline: 2px solid #BFA25E;
     outline-offset: 2px;
+}
+
+/* Message Timestamps */
+.yallo-message-time {
+    display: block;
+    font-size: 11px;
+    color: #555;
+    margin-top: 4px;
+    padding: 0 4px;
+}
+
+.yallo-message.user .yallo-message-time {
+    text-align: right;
+    color: rgba(0, 0, 0, 0.45);
+}
+
+.yallo-message.bot .yallo-message-time {
+    text-align: left;
 }
 
 /* Screen Reader Only */

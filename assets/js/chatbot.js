@@ -270,6 +270,7 @@
             // Load questions from WordPress, then initialize rest
             this.loadQuestions().always(function() {
                 self.bindEvents();
+                self.bindMobileKeyboard();
                 self.checkAutoOpen();
 
                 // ── Startup diagnostics ──────────────────────────
@@ -402,6 +403,11 @@
             this.addMessage(userMessage, 'user');
             this.showTypingIndicator();
 
+            if (yalloChatbot.aiEnabled && !this.isConsultationActive) {
+                this.getAIResponse(userMessage);
+                return;
+            }
+
             setTimeout(() => {
                 this.hideTypingIndicator();
                 if (this.isConsultationActive) {
@@ -410,6 +416,36 @@
                     this.processQuestion(userMessage);
                 }
             }, 500);
+        },
+
+        // ── AI AJAX call ──────────────────────────────────────
+        getAIResponse: function(userMessage) {
+            const self = this;
+
+            // Build history from prior messages (exclude current user message at end)
+            const history = this.messages.slice(-6, -1).map(m => ({
+                role:    m.sender === 'user' ? 'user' : 'assistant',
+                content: m.text.replace(/\*\*(.*?)\*\*/g, '$1').replace(/<br>/g, '\n'),
+            }));
+
+            $.post(yalloChatbot.ajaxUrl, {
+                action:  'yallo_ai_chat',
+                nonce:   yalloChatbot.nonce,
+                message: userMessage,
+                history: JSON.stringify(history),
+            })
+            .done(function(response) {
+                self.hideTypingIndicator();
+                if (response.success && response.data && response.data.message) {
+                    self.addMessage(response.data.message, 'bot');
+                } else {
+                    self.processQuestion(userMessage);
+                }
+            })
+            .fail(function() {
+                self.hideTypingIndicator();
+                self.processQuestion(userMessage);
+            });
         },
 
         processQuestion: function(input) {
@@ -670,8 +706,16 @@
                 $msg.append($opts);
             }
 
+            $msg.append($('<span>').addClass('yallo-message-time').text(this.formatTime()));
+
             this.$messagesContainer.append($msg);
             this.scrollToBottom();
+        },
+
+        formatTime: function() {
+            const now = new Date();
+            return now.getHours().toString().padStart(2, '0') + ':' +
+                   now.getMinutes().toString().padStart(2, '0');
         },
 
         // ── Typing indicator ──────────────────────────────────
@@ -711,6 +755,26 @@
             setTimeout(() => {
                 this.$messagesContainer.scrollTop(this.$messagesContainer[0].scrollHeight);
             }, 100);
+        },
+
+        // ── Mobile keyboard handling ──────────────────────────
+        bindMobileKeyboard: function() {
+            if (!window.visualViewport) return;
+            const self = this;
+            const $wrapper = this.$window.closest('.yallo-chatbot-wrapper');
+
+            window.visualViewport.addEventListener('resize', function() {
+                if (!self.isOpen) return;
+                const keyboardHeight = window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop;
+                if (keyboardHeight > 100) {
+                    $wrapper.css('bottom', (keyboardHeight + 10) + 'px');
+                    self.$window.css('max-height', (window.visualViewport.height - 90) + 'px');
+                } else {
+                    $wrapper.css('bottom', '');
+                    self.$window.css('max-height', '');
+                }
+                self.scrollToBottom();
+            });
         }
     };
 
